@@ -20,9 +20,9 @@
 - **Tests**: `.venv\Scripts\pytest.exe -q` -> `18 passed`.
 - **Logging & QThread fix**: Rotating logs in `logs/fontvault.log` + `faulthandler` in `logs/crash_faulthandler.log` + Qt message handler + `_active_workers` pool preventing premature `QThread` destruction crashes.
 - **Icons**: `assets/icon.png` (9,871 bytes) and `assets/icon.ico` (37,871 bytes, 16–256 px).
-- **Signed Artifacts v1.2.0 (Authenticode SHA-256, Thumbprint `BBE4F1186A767D4849187F86340BB3C9E9EE6F46`, dev cert in `Cert:\CurrentUser\My`, public `.certs/FontVault-DevCert.cer`)**:
+- **Signed Artifacts v1.4.0 (Authenticode SHA-256, Thumbprint `BBE4F1186A767D4849187F86340BB3C9E9EE6F46`, dev cert in `Cert:\CurrentUser\My`, public `.certs/FontVault-DevCert.cer`)**:
   - `build/payload/FontVault.exe`
-  - `dist/FontVault-Portable-win64.exe` (56.12 MB)
-  - `dist/FontVault-Portable-win64.zip` (55.78 MB)
-  - `dist/FontVault-Setup-win64.exe` (65.86 MB)
+  - `dist/FontVault-Portable-win64.exe` (56.18 MB)
+  - `dist/FontVault-Portable-win64.zip` (55.84 MB)
+  - `dist/FontVault-Setup-win64.exe` (65.92 MB)
 - Note: Self-signed dev signature reports `Status=UnknownError` in `Get-AuthenticodeSignature` unless user manually trusts `.certs/FontVault-DevCert.cer` or signs with `$env:CERT_PFX_PATH`.
