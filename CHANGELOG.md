@@ -2,6 +2,12 @@
 
 Todos los cambios notables en **FontVault** se documentan en este archivo siguiendo [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Versionado Semántico](https://semver.org/lang/es/).
 
+## [1.1.0] - 2026-11-24
+### Añadido
+- Vista previa de tipografías descargables antes de instalarlas: botón `Vista previa` y clic directo sobre tarjetas del catálogo online para probarlas en el estudio de escritura en vivo (`LivePreviewPanel`) con escala *waterfall*.
+- Miniaturas tipográficas precargadas en segundo plano (`ThumbnailPrefetchWorker`) y caché local de muestras en `cache/previews/` con sincronización opcional de texto en vivo.
+- Instalación directa desde una vista previa online copiando automáticamente la fuente a la bóveda personalizada.
+
 ## [1.0.0] - 2026-11-24
 ### Añadido
 - Escáner multi-origen de tipografías en Windows: fuentes instaladas (`C:\Windows\Fonts` y usuario `%LOCALAPPDATA%\Microsoft\Windows\Fonts`), bóveda personalizada y fuentes incluidas en aplicaciones (`Program Files`, `%LOCALAPPDATA%\Programs`), con caché incremental.

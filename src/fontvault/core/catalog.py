@@ -59,6 +59,57 @@ class FreeFontCatalog:
         self.timeout = timeout
         self.cache_file = cache_dir / "catalog_latin.json"
 
+    @property
+    def preview_cache_dir(self) -> Path:
+        """Directory storing temporary TTF files downloaded for live catalog previews."""
+        return self.cache_dir / "previews"
+
+    def get_cached_preview(self, font_id: str) -> Path | None:
+        """Return cached preview TTF path if present and valid."""
+        candidate = self.preview_cache_dir / f"{_safe_filename(font_id)}.ttf"
+        if candidate.is_file():
+            try:
+                if is_valid_font_magic(candidate.read_bytes()[:4]):
+                    return candidate
+            except OSError:
+                pass
+        return None
+
+    def download_preview_ttf(self, family: OnlineFontFamily) -> Path:
+        """Download or reuse a single Regular TTF for live catalog preview before installing."""
+        cached = self.get_cached_preview(family.id)
+        if cached is not None:
+            return cached
+
+        self.preview_cache_dir.mkdir(parents=True, exist_ok=True)
+        weight = 400 if 400 in family.weights else (family.weights[0] if family.weights else 400)
+        out_path = self.preview_cache_dir / f"{_safe_filename(family.id)}.ttf"
+
+        with httpx.Client(headers=self._headers(), follow_redirects=True, timeout=self.timeout) as client:
+            fast_url = JSDELIVR_TTF_URL.format(font_id=family.id, weight=weight)
+            resp = client.get(fast_url)
+            if resp.status_code == 200 and is_valid_font_magic(resp.content[:4]):
+                out_path.write_bytes(resp.content)
+                return out_path
+
+            # Fallback to Fontsource detail endpoint if weight/subset path differs.
+            detail_resp = client.get(FONTSOURCE_DETAIL_URL.format(font_id=family.id))
+            if detail_resp.status_code == 200:
+                detail = detail_resp.json()
+                variants = detail.get("variants", {}) or {}
+                w_key = str(weight) if str(weight) in variants else next(iter(variants.keys()), "")
+                if w_key:
+                    normal_map = variants[w_key].get("normal") or next(iter(variants[w_key].values()), {})
+                    subset_entry = normal_map.get("latin") or next(iter(normal_map.values()), {})
+                    ttf_url = (subset_entry.get("url", {}) or {}).get("ttf", "")
+                    if ttf_url:
+                        fallback_resp = client.get(ttf_url)
+                        if fallback_resp.status_code == 200 and is_valid_font_magic(fallback_resp.content[:4]):
+                            out_path.write_bytes(fallback_resp.content)
+                            return out_path
+
+        raise RuntimeError(f"No se pudo cargar la vista previa para '{family.family}'.")
+
     def _headers(self) -> dict[str, str]:
         return {"User-Agent": USER_AGENT}
 

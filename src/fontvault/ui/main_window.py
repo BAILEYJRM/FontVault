@@ -254,8 +254,9 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(lib_page)
 
         # Page 1: Free Font Catalog Tab
-        self.catalog_tab = CatalogTab(self.paths)
+        self.catalog_tab = CatalogTab(self.paths, self.font_cache)
         self.catalog_tab.fonts_downloaded.connect(self._on_catalog_downloaded)
+        self.catalog_tab.preview_ready.connect(self._preview_online_font)
         self.catalog_tab.status_message.connect(self.statusBar().showMessage)
         self.stack.addWidget(self.catalog_tab)
 
@@ -376,6 +377,11 @@ class MainWindow(QMainWindow):
             card.set_selected(card.item.path == item.path)
         self.preview_panel.set_font(item)
 
+    def _preview_online_font(self, item: FontItem) -> None:
+        self._selected_path = item.path
+        self.preview_panel.set_font(item)
+        self.statusBar().showMessage(f"Vista previa online: {item.family} ({item.subfamily})")
+
     def _on_live_text_changed(self, text: str) -> None:
         self._live_preview_text = text
         self.settings.preview_text = text
@@ -383,16 +389,30 @@ class MainWindow(QMainWindow):
         if self._sync_thumbnails:
             for card in self._cards:
                 card.set_preview_text(text)
+            self.catalog_tab.set_thumbnail_text(text)
 
     def _on_sync_toggled(self, enabled: bool) -> None:
         self._sync_thumbnails = enabled
         text = self._live_preview_text if enabled else THUMBNAIL_DEFAULT
         for card in self._cards:
             card.set_preview_text(text)
+        self.catalog_tab.set_thumbnail_text(text)
 
     def _install_single_font(self, item: FontItem) -> None:
         try:
-            dest = install_font_user(item.path)
+            source_path = item.path
+            if item.source == FontSource.ONLINE_PREVIEW:
+                imported = import_fonts_to_custom(item.path, self.paths.custom_fonts_dir)
+                if imported:
+                    clean_name = f"{item.family}-{item.subfamily}".replace(" ", "-") + item.path.suffix
+                    clean_target = self.paths.custom_fonts_dir / clean_name
+                    if not clean_target.exists():
+                        imported[0].rename(clean_target)
+                        source_path = clean_target
+                    else:
+                        source_path = imported[0]
+
+            dest = install_font_user(source_path)
             QMessageBox.information(
                 self,
                 "Fuente instalada",
@@ -510,3 +530,7 @@ class MainWindow(QMainWindow):
 
     def _on_catalog_downloaded(self, _files: list[Path], _installed: bool) -> None:
         self.start_scan()
+
+    def closeEvent(self, event) -> None:
+        self.catalog_tab.stop_background_workers()
+        super().closeEvent(event)

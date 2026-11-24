@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 from fontvault.config import resolve_paths
 from fontvault.core import installer_win
 from fontvault.core.catalog import FreeFontCatalog, OFFLINE_FALLBACK_FONTS
+from fontvault.models import OnlineFontFamily
 from tests.conftest import create_synthetic_ttf
 
 
@@ -86,4 +87,57 @@ def test_ui_offscreen_smoke(tmp_path: Path, monkeypatch) -> None:
         win = MainWindow(paths)
         assert "FontVault" in win.windowTitle()
         win.close()
+        win.deleteLater()
     app.processEvents()
+
+
+def test_catalog_download_preview_ttf_and_cache_hit(tmp_path: Path) -> None:
+    ttf = create_synthetic_ttf(tmp_path / "PreviewMock.ttf", family="PreviewMock")
+    ttf_bytes = ttf.read_bytes()
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.content = ttf_bytes
+
+    mock_client = MagicMock()
+    mock_client.__enter__.return_value = mock_client
+    mock_client.get.return_value = mock_resp
+
+    catalog = FreeFontCatalog(tmp_path / "cache")
+    fam = OnlineFontFamily(id="preview-mock", family="Preview Mock", category="sans-serif", weights=[400])
+
+    with patch("fontvault.core.catalog.httpx.Client", return_value=mock_client):
+        first_path = catalog.download_preview_ttf(fam)
+        assert first_path.exists()
+        assert first_path.parent == catalog.preview_cache_dir
+
+    # Second call uses local cache without hitting network.
+    with patch("fontvault.core.catalog.httpx.Client", side_effect=AssertionError("Should use cache")):
+        second_path = catalog.download_preview_ttf(fam)
+        assert second_path == first_path
+
+
+def test_catalog_tab_renders_online_preview_card(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+    from fontvault.ui.catalog_tab import CatalogTab
+    from fontvault.ui.widgets import FontLoaderCache
+
+    app = QApplication.instance() or QApplication([])
+    paths = resolve_paths(portable_override=True, base_dir=tmp_path)
+    tab = CatalogTab(paths, FontLoaderCache())
+
+    fam = OnlineFontFamily(id="inter", family="Inter", category="sans-serif", weights=[400, 700])
+    preview_ttf = create_synthetic_ttf(tab.catalog_service.preview_cache_dir / "inter.ttf", family="Inter")
+    assert preview_ttf.exists()
+
+    tab._on_catalog_loaded([fam])
+    assert "inter" in tab._cards_by_id
+    card = tab._cards_by_id["inter"]
+    assert card._loaded_item is not None
+    tab.stop_background_workers()
+    tab.close()
+    tab.deleteLater()
+    app.processEvents()
+    from PySide6.QtGui import QFontDatabase
+    QFontDatabase.removeAllApplicationFonts()

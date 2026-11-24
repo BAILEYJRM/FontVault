@@ -15,6 +15,7 @@ class FontSource(str, Enum):
     INSTALLED_USER = "installed_user"
     CUSTOM = "custom"
     APPLICATION = "application"
+    ONLINE_PREVIEW = "online_preview"
 
     @property
     def label_es(self) -> str:
@@ -24,6 +25,7 @@ class FontSource(str, Enum):
             FontSource.INSTALLED_USER: "Usuario",
             FontSource.CUSTOM: "Personalizada",
             FontSource.APPLICATION: "Aplicación",
+            FontSource.ONLINE_PREVIEW: "Catálogo Online (Vista previa)",
         }
         return labels[self]
 
