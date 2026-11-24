@@ -19,9 +19,9 @@
 - **Version & Repo**: `v1.2.0` on `https://github.com/BAILEYJRM/FontVault.git` (`master`).
 - **Tests**: `.venv\Scripts\pytest.exe -q` -> `14 passed` (`test_metadata_and_scanner.py`, `test_backup_and_portable.py`, `test_catalog_and_installer.py`).
 - **Icons**: `assets/icon.png` (9,871 bytes) and `assets/icon.ico` (37,871 bytes, 16–256 px).
-- **Signed Artifacts (Authenticode SHA-256, Thumbprint `BBE4F1186A767D4849187F86340BB3C9E9EE6F46`, dev cert in `Cert:\CurrentUser\My`, public `.certs/FontVault-DevCert.cer`)**:
-  - `build/payload/FontVault.exe` (58,840,512 bytes)
-  - `dist/FontVault-Portable-win64.exe` (58,839,896 bytes / 56.11 MB)
-  - `dist/FontVault-Portable-win64.zip` (58,476,889 bytes / 55.77 MB)
-  - `dist/FontVault-Setup-win64.exe` (69,054,280 bytes / 65.86 MB)
+- **Signed Artifacts v1.2.0 (Authenticode SHA-256, Thumbprint `BBE4F1186A767D4849187F86340BB3C9E9EE6F46`, dev cert in `Cert:\CurrentUser\My`, public `.certs/FontVault-DevCert.cer`)**:
+  - `build/payload/FontVault.exe`
+  - `dist/FontVault-Portable-win64.exe` (56.12 MB)
+  - `dist/FontVault-Portable-win64.zip` (55.78 MB)
+  - `dist/FontVault-Setup-win64.exe` (65.86 MB)
 - Note: Self-signed dev signature reports `Status=UnknownError` in `Get-AuthenticodeSignature` unless user manually trusts `.certs/FontVault-DevCert.cer` or signs with `$env:CERT_PFX_PATH`.
