@@ -1,0 +1,5 @@
+# Direct runtime dependencies
+PySide6>=6.7
+fonttools>=4.50
+Pillow>=10.0
+httpx>=0.27

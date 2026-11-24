@@ -1,0 +1,27 @@
+# FontVault — Context Map (Read First)
+
+Gestor de tipografías para Windows (`Python 3.13`, `PySide6`, `fonttools`, `Pillow`, `httpx`).
+
+## Estructura del Proyecto
+- `src/fontvault/__init__.py` — `__version__`, `__app_name__`.
+- `src/fontvault/__main__.py` — CLI (`--portable`, `--version`), AppUserModelID Windows, icono, arranque GUI.
+- `src/fontvault/config.py` — `AppPaths`, `AppSettings`, `resolve_paths()`, detección modo Portable vs Instalado.
+- `src/fontvault/models.py` — `FontSource`, `FontItem`, `OnlineFontFamily`, `BackupResult`.
+- `src/fontvault/core/metadata.py` — `parse_font_file()` con `fontTools.ttLib.TTFont`.
+- `src/fontvault/core/scanner.py` — `FontScanner` (Windows Fonts, Personalizadas, De Aplicación + caché incremental).
+- `src/fontvault/core/backup.py` — `export_fonts()` (ZIP/carpeta + `manifest.json` SHA-256), `import_fonts_to_custom()`.
+- `src/fontvault/core/installer_win.py` — `install_font_user()`, `install_font_system()`, `uninstall_font_user()`, `is_admin()`, `WM_FONTCHANGE`.
+- `src/fontvault/core/catalog.py` — `FreeFontCatalog` (Fontsource API + jsDelivr + URLs/ZIP externas con anti zip-slip).
+- `src/fontvault/ui/theme.py` — Hoja de estilos oscura Windows 11.
+- `src/fontvault/ui/widgets.py` — `FontLoaderCache` (lazy `QFontDatabase`), `FontCardWidget`, `LivePreviewPanel`.
+- `src/fontvault/ui/catalog_tab.py` — Catálogo online de fuentes gratis + descarga/instalación asíncrona + portales.
+- `src/fontvault/ui/main_window.py` — `MainWindow`, navegación lateral, paginación, barra de búsqueda y backups.
+- `scripts/generate_assets.py` — Genera `assets/icon.png` y `assets/icon.ico` multi-resolución.
+- `scripts/sign_binaries.ps1` — Firma Authenticode SHA-256 (`.pfx` o certificado dev en `Cert:\CurrentUser\My`).
+- `scripts/build_all.ps1` — Pipeline completo: icono -> EXEs -> firma -> verificaciones.
+- `packaging/` — `version_info.txt`, `portable.spec`, `app.spec`, `setup_wizard.py`, `installer.spec`, `installer.iss`.
+- `tests/` — Pruebas pytest con fuentes sintetizadas dinámicamente (`FontBuilder`).
+
+## Rutas de Datos (Portable vs Instalado)
+- **Modo Portable** (`--portable`, `FONTVAULT_PORTABLE=1`, `portable.flag` o `bundled_portable.flag`): `<exe_dir>/data/` (`custom_fonts/`, `backups/`, `cache/`, `downloads/`, `settings.json`).
+- **Modo Instalado**: `%LOCALAPPDATA%\FontVault\`.

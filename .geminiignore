@@ -1,0 +1,31 @@
+# Exclude heavy directories from AI indexing to minimize token usage
+.venv/
+venv/
+build/
+dist/
+data/
+downloads/
+backups/
+cache/
+.certs/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.git/
+
+# Exclude binary & generated assets
+assets/*.ico
+assets/*.png
+*.ttf
+*.otf
+*.ttc
+*.woff
+*.woff2
+*.exe
+*.zip
+*.pfx
+*.p12
+*.cer
+*.log
+requirements-dev.txt
+packaging/version_info.txt

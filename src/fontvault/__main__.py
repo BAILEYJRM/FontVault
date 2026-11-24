@@ -1,0 +1,61 @@
+"""CLI and GUI application entrypoint for FontVault."""
+
+from __future__ import annotations
+
+import argparse
+import ctypes
+import sys
+
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication
+
+from fontvault import __app_name__, __version__
+from fontvault.config import get_resource_path, resolve_paths
+from fontvault.ui.main_window import MainWindow
+from fontvault.ui.theme import DARK_STYLESHEET
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(prog="fontvault", description="Gestor de tipografías para Windows")
+    parser.add_argument(
+        "--portable",
+        action="store_true",
+        default=None,
+        help="Ejecutar en modo portable guardando datos junto al ejecutable",
+    )
+    parser.add_argument("--version", action="version", version=f"{__app_name__} {__version__}")
+    return parser.parse_args(argv)
+
+
+def _set_windows_app_id() -> None:
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "FontVault.TypographyManager.1"
+        )
+    except Exception:
+        pass
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    paths = resolve_paths(portable_override=True if args.portable else None)
+
+    _set_windows_app_id()
+    app = QApplication(sys.argv if argv is None else [sys.argv[0], *argv])
+    app.setApplicationName(__app_name__)
+    app.setApplicationVersion(__version__)
+    app.setStyleSheet(DARK_STYLESHEET)
+
+    icon_path = get_resource_path("assets/icon.ico")
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
+
+    window = MainWindow(paths)
+    if icon_path.exists():
+        window.setWindowIcon(QIcon(str(icon_path)))
+    window.show()
+    return app.exec()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
