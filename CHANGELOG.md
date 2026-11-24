@@ -2,6 +2,14 @@
 
 Todos los cambios notables en **FontVault** se documentan en este archivo siguiendo [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Versionado Semántico](https://semver.org/lang/es/).
 
+## [1.3.0] - 2026-11-24
+### Corregido
+- Solucionado cierre repentino de la aplicación provocado por la destrucción prematura de hilos `QThread` en curso (`_active_workers` + eliminación segura mediante `deleteLater()`), secuencia monotónica para descartar vistas previas obsoletas y *debounce* en búsquedas y guardado de ajustes.
+
+### Añadido
+- Sistema completo de logs rotativos en `logs/fontvault.log` (2 MB x 3 archivos), trazas nativas de fallos (`faulthandler` en `logs/crash_faulthandler.log`), captura de excepciones no controladas (`sys.excepthook`, `threading.excepthook`) y mensajes internos de Qt (`qInstallMessageHandler`).
+- Botón `Abrir carpeta de logs` en la barra lateral para inspeccionar diagnósticos fácilmente en modo Portable e Instalado.
+
 ## [1.2.0] - 2026-11-24
 ### Añadido
 - Botón de cambio **Modo oscuro / Modo claro** en la barra lateral (`MainWindow.toggle_theme`) con persistencia automática en `settings.json`.

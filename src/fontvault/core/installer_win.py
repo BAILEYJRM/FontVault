@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import logging
 import os
 import shutil
 import winreg
@@ -10,6 +11,9 @@ from pathlib import Path
 
 from fontvault.core.metadata import SUPPORTED_FONT_EXTENSIONS, parse_font_file
 from fontvault.models import FontSource
+
+
+logger = logging.getLogger(__name__)
 
 
 HWND_BROADCAST = 0xFFFF
@@ -85,6 +89,7 @@ def install_font_user(font_path: Path) -> Path:
 
     ctypes.windll.gdi32.AddFontResourceW(str(dest_path))
     _broadcast_font_change()
+    logger.info("Fuente instalada (usuario): %s -> %s", reg_label, dest_path)
     return dest_path
 
 
@@ -108,6 +113,7 @@ def install_font_system(font_path: Path) -> Path:
 
     ctypes.windll.gdi32.AddFontResourceW(str(dest_path))
     _broadcast_font_change()
+    logger.info("Fuente instalada (usuario): %s -> %s", reg_label, dest_path)
     return dest_path
 
 

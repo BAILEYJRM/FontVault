@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Callable
@@ -10,6 +11,9 @@ from typing import Callable
 from fontvault.config import AppPaths, AppSettings
 from fontvault.core.metadata import SUPPORTED_FONT_EXTENSIONS, parse_font_file
 from fontvault.models import FontItem, FontSource
+
+
+logger = logging.getLogger(__name__)
 
 
 SKIP_DIR_NAMES = {
@@ -233,4 +237,5 @@ class FontScanner:
 
         self.save_cache()
         results.sort(key=lambda item: (item.family.lower(), item.subfamily.lower()))
+        logger.info("Escaneo completado: %d fuentes detectadas (include_apps=%s)", len(results), include_apps)
         return results

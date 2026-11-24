@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 import zipfile
@@ -14,6 +15,9 @@ import httpx
 
 from fontvault.core.metadata import SUPPORTED_FONT_EXTENSIONS, is_valid_font_magic
 from fontvault.models import OnlineFontFamily
+
+
+logger = logging.getLogger(__name__)
 
 
 USER_AGENT = "FontVault/1.0 (Windows NT 10.0; Win64; x64)"
@@ -160,8 +164,10 @@ class FreeFontCatalog:
                     )
                     parsed = self._parse_catalog_entries(raw_data)
                     if parsed:
+                        logger.info("Catálogo online actualizado: %d familias", len(parsed))
                         return parsed
-        except Exception:
+        except Exception as exc:
+            logger.warning("Fallo consultando catálogo Fontsource (%s); usando caché/fallback", exc)
             # Fall back to stale cache if present before returning offline defaults.
             if self.cache_file.exists():
                 try:

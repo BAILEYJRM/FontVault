@@ -22,6 +22,7 @@ class AppPaths:
     backups_dir: Path
     cache_dir: Path
     downloads_dir: Path
+    logs_dir: Path
     settings_file: Path
 
     def ensure_dirs(self) -> None:
@@ -32,6 +33,7 @@ class AppPaths:
             self.backups_dir,
             self.cache_dir,
             self.downloads_dir,
+            self.logs_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
 
@@ -111,6 +113,7 @@ def resolve_paths(
         backups_dir=root_dir / "backups",
         cache_dir=root_dir / "cache",
         downloads_dir=root_dir / "downloads",
+        logs_dir=root_dir / "logs",
         settings_file=root_dir / "settings.json",
     )
     paths.ensure_dirs()

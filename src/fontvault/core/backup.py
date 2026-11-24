@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import shutil
 import zipfile
@@ -12,6 +13,9 @@ from pathlib import Path
 
 from fontvault.core.metadata import SUPPORTED_FONT_EXTENSIONS, is_valid_font_magic
 from fontvault.models import BackupResult, FontItem, FontSource
+
+
+logger = logging.getLogger(__name__)
 
 
 def _sanitize_segment(name: str) -> str:
@@ -124,6 +128,7 @@ def export_fonts(
         }
         manifest_path.write_text(json.dumps(manifest_payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    logger.info("Backup exportado: %d fuentes (%d bytes) -> %s", copied_count, total_bytes, destination)
     return BackupResult(
         destination=destination,
         copied_count=copied_count,

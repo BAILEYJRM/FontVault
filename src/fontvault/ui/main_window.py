@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -39,6 +41,9 @@ from fontvault.ui.widgets import (
     LivePreviewPanel,
     format_bytes,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class ScanWorker(QThread):
@@ -106,8 +111,19 @@ class MainWindow(QMainWindow):
         self._sync_thumbnails = False
         self._live_preview_text = self.settings.preview_text
 
+        self._active_workers: set[QThread] = set()
         self._scan_worker: ScanWorker | None = None
         self._backup_worker: BackupWorker | None = None
+
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(180)
+        self._search_timer.timeout.connect(self._apply_filter)
+
+        self._settings_timer = QTimer(self)
+        self._settings_timer.setSingleShot(True)
+        self._settings_timer.setInterval(400)
+        self._settings_timer.timeout.connect(self._flush_settings)
 
         mode_label = "Modo Portable" if paths.is_portable else "Modo Instalado"
         self.setWindowTitle(f"{__app_name__} v{__version__} — Gestor de Tipografías ({mode_label})")
@@ -210,6 +226,10 @@ class MainWindow(QMainWindow):
         export_dir_btn.clicked.connect(lambda: self._backup_category(self._active_category, as_zip=False))
         sb_layout.addWidget(export_dir_btn)
 
+        logs_btn = QPushButton("Abrir carpeta de logs")
+        logs_btn.clicked.connect(self._open_logs_folder)
+        sb_layout.addWidget(logs_btn)
+
         sb_layout.addStretch(1)
         outer.addWidget(sidebar)
 
@@ -236,7 +256,7 @@ class MainWindow(QMainWindow):
         top_bar.setSpacing(8)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Buscar por familia, estilo, formato o aplicación...")
-        self.search_input.textChanged.connect(self._apply_filter)
+        self.search_input.textChanged.connect(lambda _txt: self._search_timer.start())
         top_bar.addWidget(self.search_input, 1)
 
         self.count_lbl = QLabel("0 fuentes")
@@ -281,17 +301,37 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
 
+    def _register_worker(self, worker: QThread) -> None:
+        self._active_workers.add(worker)
+
+        def _cleanup() -> None:
+            self._active_workers.discard(worker)
+            worker.deleteLater()
+
+        worker.finished.connect(_cleanup)
+
+    def _flush_settings(self) -> None:
+        save_settings(self.paths, self.settings)
+
+    def _open_logs_folder(self) -> None:
+        self.paths.logs_dir.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.paths.logs_dir)))
+
     def start_scan(self) -> None:
         if self._scan_worker and self._scan_worker.isRunning():
             return
         self.statusBar().showMessage("Escaneando tipografías...")
-        self._scan_worker = ScanWorker(self.scanner, self.settings)
-        self._scan_worker.progress.connect(self.statusBar().showMessage)
-        self._scan_worker.finished_ok.connect(self._on_scan_finished)
-        self._scan_worker.failed.connect(
-            lambda err: self.statusBar().showMessage(f"Error durante escaneo: {err}")
-        )
-        self._scan_worker.start()
+        worker = ScanWorker(self.scanner, self.settings)
+        self._scan_worker = worker
+        self._register_worker(worker)
+        worker.progress.connect(self.statusBar().showMessage)
+        worker.finished_ok.connect(self._on_scan_finished)
+        worker.failed.connect(self._on_scan_failed)
+        worker.start()
+
+    def _on_scan_failed(self, err: str) -> None:
+        logger.error("Error durante escaneo: %s", err)
+        self.statusBar().showMessage(f"Error durante escaneo: {err}")
 
     def _on_scan_finished(self, items: list[FontItem]) -> None:
         self._all_fonts = items
@@ -393,7 +433,7 @@ class MainWindow(QMainWindow):
     def _on_live_text_changed(self, text: str) -> None:
         self._live_preview_text = text
         self.settings.preview_text = text
-        save_settings(self.paths, self.settings)
+        self._settings_timer.start()
         if self._sync_thumbnails:
             for card in self._cards:
                 card.set_preview_text(text)
@@ -481,12 +521,14 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Backup en curso", "Espera a que termine la copia actual.")
             return
         self.statusBar().showMessage(f"Salvando {len(items)} tipografías en {dest}...")
-        self._backup_worker = BackupWorker(items, dest, as_zip=as_zip)
-        self._backup_worker.finished_ok.connect(self._on_backup_done)
-        self._backup_worker.failed.connect(
+        worker = BackupWorker(items, dest, as_zip=as_zip)
+        self._backup_worker = worker
+        self._register_worker(worker)
+        worker.finished_ok.connect(self._on_backup_done)
+        worker.failed.connect(
             lambda err: QMessageBox.warning(self, "Error en copia de seguridad", err)
         )
-        self._backup_worker.start()
+        worker.start()
 
     def _on_backup_done(self, result: BackupResult) -> None:
         msg = (
@@ -554,5 +596,12 @@ class MainWindow(QMainWindow):
         self.start_scan()
 
     def closeEvent(self, event) -> None:
+        if self._settings_timer.isActive():
+            self._settings_timer.stop()
+            self._flush_settings()
         self.catalog_tab.stop_background_workers()
+        for worker in list(self._active_workers):
+            if worker.isRunning():
+                worker.requestInterruption()
+                worker.wait(2500)
         super().closeEvent(event)

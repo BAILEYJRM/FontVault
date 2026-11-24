@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, QUrl, Signal
+from PySide6.QtCore import Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -26,6 +27,9 @@ from fontvault.core.installer_win import install_font_user
 from fontvault.core.metadata import parse_font_file
 from fontvault.models import FontItem, FontSource, OnlineFontFamily
 from fontvault.ui.widgets import FontLoaderCache, THUMBNAIL_DEFAULT
+
+
+logger = logging.getLogger(__name__)
 
 
 class CatalogFetchWorker(QThread):
@@ -89,26 +93,30 @@ class FontDownloadWorker(QThread):
 class FontPreviewWorker(QThread):
     """Background worker fetching a single TTF to preview an online font before installing."""
 
-    preview_loaded = Signal(str, object)
-    failed = Signal(str)
+    preview_loaded = Signal(int, str, object)
+    failed = Signal(int, str)
 
-    def __init__(self, catalog: FreeFontCatalog, family: OnlineFontFamily) -> None:
+    def __init__(self, seq: int, catalog: FreeFontCatalog, family: OnlineFontFamily) -> None:
         super().__init__()
+        self.seq = seq
         self.catalog = catalog
         self.family = family
 
     def run(self) -> None:
         try:
             ttf_path = self.catalog.download_preview_ttf(self.family)
+            if self.isInterruptionRequested():
+                return
             item = parse_font_file(ttf_path, source=FontSource.ONLINE_PREVIEW)
             if item is None:
                 raise RuntimeError(f"Archivo de vista previa inválido para '{self.family.family}'.")
             if not item.family or item.family == ttf_path.stem:
                 item.family = self.family.family
                 item.full_name = f"{self.family.family} {item.subfamily}".strip()
-            self.preview_loaded.emit(self.family.id, item)
+            self.preview_loaded.emit(self.seq, self.family.id, item)
         except Exception as exc:
-            self.failed.emit(str(exc))
+            logger.warning("Error cargando vista previa de '%s': %s", self.family.id, exc)
+            self.failed.emit(self.seq, str(exc))
 
 
 class ThumbnailPrefetchWorker(QThread):
@@ -234,14 +242,20 @@ class OnlineFontCardWidget(QFrame):
             source=FontSource.ONLINE_PREVIEW,
         )
         self._loaded_item = item
-        self.specimen_lbl.setFont(self.font_cache.qfont_for_item(item, 18))
-        self.specimen_lbl.setText(self._preview_text)
+        try:
+            self.specimen_lbl.setFont(self.font_cache.qfont_for_item(item, 18))
+            self.specimen_lbl.setText(self._preview_text)
+        except RuntimeError:
+            pass
 
     def set_preview_text(self, text: str) -> None:
         """Update displayed thumbnail text if this card already loaded its preview font."""
         self._preview_text = text.strip() or THUMBNAIL_DEFAULT
         if self._loaded_item is not None:
-            self.specimen_lbl.setText(self._preview_text)
+            try:
+                self.specimen_lbl.setText(self._preview_text)
+            except RuntimeError:
+                pass
 
     def set_selected(self, is_selected: bool) -> None:
         self.setProperty("selected", "true" if is_selected else "false")
@@ -272,10 +286,16 @@ class CatalogTab(QWidget):
         self._selected_id: str | None = None
         self._thumbnail_text: str = THUMBNAIL_DEFAULT
         self._visible_limit = 60
+        self._preview_request_seq = 0
+        self._active_workers: set[QThread] = set()
         self._fetch_worker: CatalogFetchWorker | None = None
         self._dl_worker: FontDownloadWorker | None = None
-        self._preview_worker: FontPreviewWorker | None = None
         self._prefetch_worker: ThumbnailPrefetchWorker | None = None
+
+        self._filter_timer = QTimer(self)
+        self._filter_timer.setSingleShot(True)
+        self._filter_timer.setInterval(180)
+        self._filter_timer.timeout.connect(self._apply_filter)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 14, 16, 14)
@@ -327,7 +347,7 @@ class CatalogTab(QWidget):
         self.search_input.setPlaceholderText(
             "Buscar entre más de 1.600 familias gratuitas (Inter, Roboto, JetBrains Mono, Playfair...)..."
         )
-        self.search_input.textChanged.connect(self._apply_filter)
+        self.search_input.textChanged.connect(lambda _txt: self._filter_timer.start())
         filter_row.addWidget(self.search_input, 1)
 
         self.category_combo = QComboBox()
@@ -360,11 +380,25 @@ class CatalogTab(QWidget):
         self.load_more_btn.clicked.connect(self._show_more)
         root.addWidget(self.load_more_btn)
 
+    def _register_worker(self, worker: QThread) -> None:
+        """Retain QThread reference until finished to avoid qFatal destruction crash."""
+        self._active_workers.add(worker)
+
+        def _cleanup() -> None:
+            self._active_workers.discard(worker)
+            worker.deleteLater()
+
+        worker.finished.connect(_cleanup)
+
     def stop_background_workers(self) -> None:
-        """Stop thumbnail prefetch worker cleanly on widget/window close."""
+        """Stop all active catalog QThreads cleanly before closing or replacing."""
+        for worker in list(self._active_workers):
+            if worker.isRunning():
+                worker.requestInterruption()
+                worker.wait(2500)
         if self._prefetch_worker and self._prefetch_worker.isRunning():
             self._prefetch_worker.requestInterruption()
-            self._prefetch_worker.wait(1500)
+            self._prefetch_worker.wait(2500)
 
     def set_thumbnail_text(self, text: str) -> None:
         """Sync live typing preview text to all loaded online font miniatures."""
@@ -377,10 +411,12 @@ class CatalogTab(QWidget):
             return
         self.refresh_btn.setEnabled(False)
         self.status_message.emit("Consultando catálogo gratuito de Fontsource / Google Fonts...")
-        self._fetch_worker = CatalogFetchWorker(self.catalog_service, force_refresh=force_refresh)
-        self._fetch_worker.finished_ok.connect(self._on_catalog_loaded)
-        self._fetch_worker.failed.connect(self._on_catalog_failed)
-        self._fetch_worker.start()
+        worker = CatalogFetchWorker(self.catalog_service, force_refresh=force_refresh)
+        self._fetch_worker = worker
+        self._register_worker(worker)
+        worker.finished_ok.connect(self._on_catalog_loaded)
+        worker.failed.connect(self._on_catalog_failed)
+        worker.start()
 
     def _on_catalog_loaded(self, families: list[OnlineFontFamily]) -> None:
         self.refresh_btn.setEnabled(True)
@@ -412,7 +448,8 @@ class CatalogTab(QWidget):
         self._render_cards()
 
     def _render_cards(self) -> None:
-        self.stop_background_workers()
+        if self._prefetch_worker and self._prefetch_worker.isRunning():
+            self._prefetch_worker.requestInterruption()
         while self.list_layout.count() > 0:
             item = self.list_layout.takeAt(0)
             widget = item.widget()
@@ -447,9 +484,11 @@ class CatalogTab(QWidget):
         self.list_layout.addStretch(1)
 
         if to_prefetch:
-            self._prefetch_worker = ThumbnailPrefetchWorker(self.catalog_service, to_prefetch)
-            self._prefetch_worker.thumbnail_ready.connect(self._on_thumbnail_prefetched)
-            self._prefetch_worker.start()
+            prefetcher = ThumbnailPrefetchWorker(self.catalog_service, to_prefetch)
+            self._prefetch_worker = prefetcher
+            self._register_worker(prefetcher)
+            prefetcher.thumbnail_ready.connect(self._on_thumbnail_prefetched)
+            prefetcher.start()
 
     def _on_thumbnail_prefetched(self, font_id: str, path: Path) -> None:
         card = self._cards_by_id.get(font_id)
@@ -461,34 +500,43 @@ class CatalogTab(QWidget):
         for fid, card in self._cards_by_id.items():
             card.set_selected(fid == family.id)
 
+        self._preview_request_seq += 1
+        seq = self._preview_request_seq
         self.status_message.emit(f"Cargando vista previa de '{family.family}'...")
-        self._preview_worker = FontPreviewWorker(self.catalog_service, family)
-        self._preview_worker.preview_loaded.connect(self._on_preview_loaded)
-        self._preview_worker.failed.connect(
-            lambda err: self.status_message.emit(f"No se pudo cargar vista previa: {err}")
-        )
-        self._preview_worker.start()
+        worker = FontPreviewWorker(seq, self.catalog_service, family)
+        self._register_worker(worker)
+        worker.preview_loaded.connect(self._on_preview_loaded)
+        worker.failed.connect(self._on_preview_failed)
+        worker.start()
 
-    def _on_preview_loaded(self, font_id: str, item: FontItem) -> None:
+    def _on_preview_loaded(self, seq: int, font_id: str, item: FontItem) -> None:
+        if seq != self._preview_request_seq:
+            return
         card = self._cards_by_id.get(font_id)
         if card is not None:
             card.apply_preview_font(item.path, self._thumbnail_text)
         self.preview_ready.emit(item)
+
+    def _on_preview_failed(self, seq: int, err: str) -> None:
+        if seq == self._preview_request_seq:
+            self.status_message.emit(f"No se pudo cargar vista previa: {err}")
 
     def _download_family(self, font_id: str, auto_install: bool) -> None:
         if self._dl_worker and self._dl_worker.isRunning():
             QMessageBox.information(self, "Descarga en curso", "Espera a que termine la descarga actual.")
             return
         self.status_message.emit(f"Descargando '{font_id}'...")
-        self._dl_worker = FontDownloadWorker(
+        worker = FontDownloadWorker(
             self.catalog_service,
             dest_dir=self.paths.custom_fonts_dir,
             font_id=font_id,
             auto_install=auto_install,
         )
-        self._dl_worker.finished_ok.connect(self._on_download_done)
-        self._dl_worker.failed.connect(self._on_download_failed)
-        self._dl_worker.start()
+        self._dl_worker = worker
+        self._register_worker(worker)
+        worker.finished_ok.connect(self._on_download_done)
+        worker.failed.connect(self._on_download_failed)
+        worker.start()
 
     def _download_custom_url(self) -> None:
         url = self.url_input.text().strip()
@@ -501,15 +549,17 @@ class CatalogTab(QWidget):
 
         self.url_dl_btn.setEnabled(False)
         self.status_message.emit(f"Descargando desde URL: {url}")
-        self._dl_worker = FontDownloadWorker(
+        worker = FontDownloadWorker(
             self.catalog_service,
             dest_dir=self.paths.custom_fonts_dir,
             custom_url=url,
             auto_install=self.url_install_chk.isChecked(),
         )
-        self._dl_worker.finished_ok.connect(self._on_download_done)
-        self._dl_worker.failed.connect(self._on_download_failed)
-        self._dl_worker.start()
+        self._dl_worker = worker
+        self._register_worker(worker)
+        worker.finished_ok.connect(self._on_download_done)
+        worker.failed.connect(self._on_download_failed)
+        worker.start()
 
     def _on_download_done(self, files: list[Path], installed: bool) -> None:
         self.url_dl_btn.setEnabled(True)
