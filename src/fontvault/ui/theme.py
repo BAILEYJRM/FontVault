@@ -48,6 +48,12 @@ QFrame#SpecimenBox {
     border-radius: 8px;
 }
 
+QFrame#BatchBar {
+    background-color: #111827;
+    border: 1px solid #334155;
+    border-radius: 8px;
+}
+
 QFrame#DividerLine {
     color: #1E293B;
     background-color: #1E293B;
@@ -177,6 +183,24 @@ QPushButton#AccentBtn {
 
 QPushButton#AccentBtn:hover {
     background-color: #06B6D4;
+}
+
+QPushButton#DangerBtn {
+    background-color: #991B1B;
+    border: 1px solid #DC2626;
+    color: #FFFFFF;
+    font-weight: 600;
+}
+
+QPushButton#DangerBtn:hover {
+    background-color: #B91C1C;
+}
+
+QPushButton:disabled {
+    opacity: 0.45;
+    background-color: #0F172A;
+    color: #64748B;
+    border-color: #1E293B;
 }
 
 QPushButton#NavBtn {
@@ -317,6 +341,12 @@ QFrame#SpecimenBox {
     border-radius: 8px;
 }
 
+QFrame#BatchBar {
+    background-color: #FFFFFF;
+    border: 1px solid #CBD5E1;
+    border-radius: 8px;
+}
+
 QFrame#DividerLine {
     color: #E2E8F0;
     background-color: #E2E8F0;
@@ -447,6 +477,23 @@ QPushButton#AccentBtn {
 
 QPushButton#AccentBtn:hover {
     background-color: #0E7490;
+}
+
+QPushButton#DangerBtn {
+    background-color: #DC2626;
+    border: 1px solid #B91C1C;
+    color: #FFFFFF;
+    font-weight: 600;
+}
+
+QPushButton#DangerBtn:hover {
+    background-color: #B91C1C;
+}
+
+QPushButton:disabled {
+    background-color: #E2E8F0;
+    color: #94A3B8;
+    border-color: #CBD5E1;
 }
 
 QPushButton#NavBtn {

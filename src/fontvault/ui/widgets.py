@@ -38,6 +38,7 @@ class FontLoaderCache:
 
     def __init__(self) -> None:
         self._path_to_family: dict[str, str] = {}
+        self._path_to_font_id: dict[str, int] = {}
 
     def family_for_item(self, item: FontItem) -> str:
         """Resolve Qt font family name, registering uninstalled font lazily on demand."""
@@ -50,6 +51,7 @@ class FontLoaderCache:
 
         font_id = QFontDatabase.addApplicationFont(str(item.path))
         if font_id >= 0:
+            self._path_to_font_id[key] = font_id
             families = QFontDatabase.applicationFontFamilies(font_id)
             if families:
                 self._path_to_family[key] = families[0]
@@ -57,6 +59,14 @@ class FontLoaderCache:
 
         self._path_to_family[key] = item.family
         return item.family
+
+    def release_font(self, path) -> None:
+        """Unregister font from QFontDatabase so Windows releases the file handle."""
+        key = str(path).lower()
+        self._path_to_family.pop(key, None)
+        font_id = self._path_to_font_id.pop(key, None)
+        if font_id is not None and font_id >= 0:
+            QFontDatabase.removeApplicationFont(font_id)
 
     def qfont_for_item(self, item: FontItem, point_size: int) -> QFont:
         """Return configured QFont instance for thumbnail or live preview."""
@@ -74,6 +84,7 @@ class FontCardWidget(QFrame):
     """Card displaying a font's metadata badges, typographic thumbnail, and quick actions."""
 
     selected = Signal(object)
+    checked_changed = Signal(object, bool)
     backup_requested = Signal(object)
     install_requested = Signal(object)
 
@@ -82,6 +93,7 @@ class FontCardWidget(QFrame):
         item: FontItem,
         font_cache: FontLoaderCache,
         preview_text: str = THUMBNAIL_DEFAULT,
+        is_checked: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -95,9 +107,15 @@ class FontCardWidget(QFrame):
         layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(8)
 
-        # Header row: Family + Badges
+        # Header row: Checkbox + Family + Badges
         header = QHBoxLayout()
         header.setSpacing(6)
+
+        self.check_box = QCheckBox()
+        self.check_box.setChecked(is_checked)
+        self.check_box.setToolTip("Marcar para acciones en lote")
+        self.check_box.toggled.connect(lambda checked: self.checked_changed.emit(self.item, checked))
+        header.addWidget(self.check_box)
 
         title_lbl = QLabel(f"{item.family}  ·  {item.subfamily}")
         title_lbl.setObjectName("CardTitle")
@@ -160,6 +178,11 @@ class FontCardWidget(QFrame):
         self.setProperty("selected", "true" if is_selected else "false")
         self.style().unpolish(self)
         self.style().polish(self)
+
+    def set_checked(self, is_checked: bool) -> None:
+        self.check_box.blockSignals(True)
+        self.check_box.setChecked(is_checked)
+        self.check_box.blockSignals(False)
 
     def set_preview_text(self, text: str) -> None:
         self.specimen_lbl.setText(text.strip() or THUMBNAIL_DEFAULT)

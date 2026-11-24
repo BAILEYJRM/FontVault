@@ -2,6 +2,12 @@
 
 Todos los cambios notables en **FontVault** se documentan en este archivo siguiendo [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Versionado Semántico](https://semver.org/lang/es/).
 
+## [1.4.0] - 2026-11-24
+### Añadido
+- Casillas de verificación en todas las tarjetas de biblioteca y catálogo online con barra de acciones en lote (`Seleccionar visibles`, `Limpiar` y contador de selección).
+- Operaciones en masa en biblioteca (`BatchLibraryWorker`): **Instalar seleccionadas**, **Salvar seleccionadas (.zip)** y **Eliminar seleccionadas** (con liberación previa de `QFontDatabase`, confirmación explícita y protección automática frente al borrado de fuentes del sistema y de aplicaciones).
+- Operaciones en masa en el catálogo gratuito (`BatchCatalogDownloadWorker`): **Descargar seleccionadas** y **Descargar e Instalar seleccionadas**.
+
 ## [1.3.0] - 2026-11-24
 ### Corregido
 - Solucionado cierre repentino de la aplicación provocado por la destrucción prematura de hilos `QThread` en curso (`_active_workers` + eliminación segura mediante `deleteLater()`), secuencia monotónica para descartar vistas previas obsoletas y *debounce* en búsquedas y guardado de ajustes.

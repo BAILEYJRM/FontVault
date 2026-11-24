@@ -2,7 +2,7 @@
 [Setup]
 AppId={{7B6F19B2-7A4D-49C6-9A2D-7F5D8C109A41}
 AppName=FontVault
-AppVersion=1.3.0
+AppVersion=1.4.0
 AppPublisher=FontVault Project
 DefaultDirName={localappdata}\Programs\FontVault
 DefaultGroupName=FontVault

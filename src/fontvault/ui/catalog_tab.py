@@ -143,11 +143,55 @@ class ThumbnailPrefetchWorker(QThread):
                 continue
 
 
+class BatchCatalogDownloadWorker(QThread):
+    """Background worker downloading and optionally installing multiple selected fonts."""
+
+    progress_msg = Signal(str)
+    finished_batch = Signal(int, int, list, bool)
+
+    def __init__(
+        self,
+        catalog: FreeFontCatalog,
+        dest_dir: Path,
+        families: list[OnlineFontFamily],
+        auto_install: bool = False,
+    ) -> None:
+        super().__init__()
+        self.catalog = catalog
+        self.dest_dir = dest_dir
+        self.families = families
+        self.auto_install = auto_install
+
+    def run(self) -> None:
+        ok_count = 0
+        err_count = 0
+        all_files: list[Path] = []
+        total = len(self.families)
+
+        for idx, fam in enumerate(self.families, start=1):
+            if self.isInterruptionRequested():
+                break
+            self.progress_msg.emit(f"Descargando ({idx}/{total}): {fam.family}...")
+            try:
+                files = self.catalog.download_family_ttf(fam.id, self.dest_dir)
+                if self.auto_install:
+                    for font_path in files:
+                        install_font_user(font_path)
+                all_files.extend(files)
+                ok_count += 1
+            except Exception as exc:
+                err_count += 1
+                logger.warning("Fallo descargando '%s' en lote: %s", fam.id, exc)
+
+        self.finished_batch.emit(ok_count, err_count, all_files, self.auto_install)
+
+
 class OnlineFontCardWidget(QFrame):
-    """Catalog card with inline miniature preview and download/install actions."""
+    """Catalog card with checkbox, inline miniature preview, and download/install actions."""
 
     preview_requested = Signal(object)
     download_requested = Signal(str, bool)
+    checked_changed = Signal(str, bool)
 
     def __init__(
         self,
@@ -155,6 +199,7 @@ class OnlineFontCardWidget(QFrame):
         font_cache: FontLoaderCache,
         cached_path: Path | None = None,
         preview_text: str = THUMBNAIL_DEFAULT,
+        is_checked: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -173,6 +218,12 @@ class OnlineFontCardWidget(QFrame):
 
         header = QHBoxLayout()
         header.setSpacing(8)
+
+        self.check_box = QCheckBox()
+        self.check_box.setChecked(is_checked)
+        self.check_box.setToolTip("Marcar para descargar/instalar en lote")
+        self.check_box.toggled.connect(lambda checked: self.checked_changed.emit(self.family.id, checked))
+        header.addWidget(self.check_box)
 
         name_lbl = QLabel(family.family)
         name_lbl.setObjectName("CardTitle")
@@ -262,6 +313,11 @@ class OnlineFontCardWidget(QFrame):
         self.style().unpolish(self)
         self.style().polish(self)
 
+    def set_checked(self, is_checked: bool) -> None:
+        self.check_box.blockSignals(True)
+        self.check_box.setChecked(is_checked)
+        self.check_box.blockSignals(False)
+
 
 class CatalogTab(QWidget):
     """UI tab for browsing, previewing, downloading, and installing free fonts."""
@@ -283,6 +339,7 @@ class CatalogTab(QWidget):
         self._families: list[OnlineFontFamily] = []
         self._filtered: list[OnlineFontFamily] = []
         self._cards_by_id: dict[str, OnlineFontCardWidget] = {}
+        self._checked_ids: set[str] = set()
         self._selected_id: str | None = None
         self._thumbnail_text: str = THUMBNAIL_DEFAULT
         self._visible_limit = 60
@@ -290,6 +347,7 @@ class CatalogTab(QWidget):
         self._active_workers: set[QThread] = set()
         self._fetch_worker: CatalogFetchWorker | None = None
         self._dl_worker: FontDownloadWorker | None = None
+        self._batch_dl_worker: BatchCatalogDownloadWorker | None = None
         self._prefetch_worker: ThumbnailPrefetchWorker | None = None
 
         self._filter_timer = QTimer(self)
@@ -363,6 +421,38 @@ class CatalogTab(QWidget):
         self.count_lbl = QLabel("Cargando catálogo gratuito...")
         self.count_lbl.setObjectName("MutedText")
         root.addWidget(self.count_lbl)
+
+        # Batch selection bar
+        batch_bar = QFrame()
+        batch_bar.setObjectName("BatchBar")
+        batch_layout = QHBoxLayout(batch_bar)
+        batch_layout.setContentsMargins(10, 8, 10, 8)
+        batch_layout.setSpacing(8)
+
+        select_vis_btn = QPushButton("Seleccionar visibles")
+        select_vis_btn.clicked.connect(self.select_visible)
+        batch_layout.addWidget(select_vis_btn)
+
+        clear_sel_btn = QPushButton("Limpiar")
+        clear_sel_btn.clicked.connect(self.clear_selection)
+        batch_layout.addWidget(clear_sel_btn)
+
+        self.selection_lbl = QLabel("0 seleccionadas")
+        self.selection_lbl.setObjectName("CountLabel")
+        batch_layout.addWidget(self.selection_lbl)
+        batch_layout.addStretch(1)
+
+        self.batch_download_btn = QPushButton("Descargar seleccionadas")
+        self.batch_download_btn.setEnabled(False)
+        self.batch_download_btn.clicked.connect(lambda: self._download_selected(auto_install=False))
+        batch_layout.addWidget(self.batch_download_btn)
+
+        self.batch_install_btn = QPushButton("Descargar e Instalar seleccionadas")
+        self.batch_install_btn.setObjectName("PrimaryBtn")
+        self.batch_install_btn.setEnabled(False)
+        self.batch_install_btn.clicked.connect(lambda: self._download_selected(auto_install=True))
+        batch_layout.addWidget(self.batch_install_btn)
+        root.addWidget(batch_bar)
 
         # Scrollable list of online font cards
         self.scroll = QScrollArea()
@@ -474,14 +564,17 @@ class CatalogTab(QWidget):
                 self.font_cache,
                 cached_path=cached,
                 preview_text=self._thumbnail_text,
+                is_checked=fam.id in self._checked_ids,
             )
             card.set_selected(self._selected_id == fam.id)
+            card.checked_changed.connect(self._on_card_checked)
             card.preview_requested.connect(self._request_preview)
             card.download_requested.connect(self._download_family)
             self._cards_by_id[fam.id] = card
             self.list_layout.addWidget(card)
 
         self.list_layout.addStretch(1)
+        self._update_batch_bar()
 
         if to_prefetch:
             prefetcher = ThumbnailPrefetchWorker(self.catalog_service, to_prefetch)
@@ -574,3 +667,73 @@ class CatalogTab(QWidget):
         self.url_dl_btn.setEnabled(True)
         self.status_message.emit(f"Error en descarga: {error}")
         QMessageBox.warning(self, "Error de descarga", error)
+
+    def _on_card_checked(self, font_id: str, checked: bool) -> None:
+        if checked:
+            self._checked_ids.add(font_id)
+        else:
+            self._checked_ids.discard(font_id)
+        self._update_batch_bar()
+
+    def select_visible(self) -> None:
+        """Mark all currently visible catalog font cards."""
+        for font_id, card in self._cards_by_id.items():
+            self._checked_ids.add(font_id)
+            card.set_checked(True)
+        self._update_batch_bar()
+
+    def clear_selection(self) -> None:
+        """Clear all checked catalog font selections."""
+        self._checked_ids.clear()
+        for card in self._cards_by_id.values():
+            card.set_checked(False)
+        self._update_batch_bar()
+
+    def _update_batch_bar(self) -> None:
+        count = len(self._checked_ids)
+        self.selection_lbl.setText(f"{count} seleccionada{'s' if count != 1 else ''}")
+        has_sel = count > 0
+        self.batch_download_btn.setEnabled(has_sel)
+        self.batch_install_btn.setEnabled(has_sel)
+
+    def _download_selected(self, auto_install: bool) -> None:
+        if not self._checked_ids:
+            return
+        if self._batch_dl_worker and self._batch_dl_worker.isRunning():
+            QMessageBox.information(self, "Descarga en curso", "Espera a que termine el lote actual.")
+            return
+
+        targets = [fam for fam in self._families if fam.id in self._checked_ids]
+        if not targets:
+            return
+
+        self.batch_download_btn.setEnabled(False)
+        self.batch_install_btn.setEnabled(False)
+        worker = BatchCatalogDownloadWorker(
+            self.catalog_service,
+            dest_dir=self.paths.custom_fonts_dir,
+            families=targets,
+            auto_install=auto_install,
+        )
+        self._batch_dl_worker = worker
+        self._register_worker(worker)
+        worker.progress_msg.connect(self.status_message.emit)
+        worker.finished_batch.connect(self._on_batch_download_done)
+        worker.start()
+
+    def _on_batch_download_done(
+        self,
+        ok_count: int,
+        err_count: int,
+        files: list[Path],
+        installed: bool,
+    ) -> None:
+        action_txt = "descargadas e instaladas" if installed else "descargadas en Personalizadas"
+        msg = f"Lote completado: {ok_count} familia(s) {action_txt} ({len(files)} archivo(s))."
+        if err_count:
+            msg += f" Fallaron: {err_count}."
+        self.status_message.emit(msg)
+        QMessageBox.information(self, "Descarga en lote completada", msg)
+        self.clear_selection()
+        if files:
+            self.fonts_downloaded.emit(files, installed)

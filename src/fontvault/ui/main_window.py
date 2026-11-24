@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 from fontvault import __app_name__, __version__
 from fontvault.config import AppPaths, AppSettings, load_settings, save_settings
 from fontvault.core.backup import export_fonts, import_fonts_to_custom
-from fontvault.core.installer_win import install_font_user
+from fontvault.core.installer_win import delete_font_item, install_font_user
 from fontvault.core.scanner import FontScanner
 from fontvault.models import BackupResult, FontItem, FontSource
 from fontvault.ui.catalog_tab import CatalogTab
@@ -90,6 +90,48 @@ class BackupWorker(QThread):
             self.failed.emit(str(exc))
 
 
+class BatchLibraryWorker(QThread):
+    """Background worker applying bulk install or delete across checked fonts."""
+
+    progress_msg = Signal(str)
+    finished_batch = Signal(str, int, int, list)
+
+    def __init__(self, action: str, items: list[FontItem]) -> None:
+        super().__init__()
+        self.action = action
+        self.items = items
+
+    def run(self) -> None:
+        ok_count = 0
+        skipped_count = 0
+        errors: list[str] = []
+        total = len(self.items)
+
+        for idx, item in enumerate(self.items, start=1):
+            if self.isInterruptionRequested():
+                break
+            self.progress_msg.emit(f"Procesando ({idx}/{total}): {item.family}...")
+            try:
+                if self.action == "install":
+                    if item.source.is_installed:
+                        skipped_count += 1
+                        continue
+                    install_font_user(item.path)
+                    ok_count += 1
+                elif self.action == "delete":
+                    deleted, reason = delete_font_item(item)
+                    if deleted:
+                        ok_count += 1
+                    else:
+                        skipped_count += 1
+                        logger.info("Omitida al eliminar '%s': %s", item.path, reason)
+            except Exception as exc:
+                errors.append(f"{item.path.name}: {exc}")
+                logger.warning("Error en operación '%s' para %s: %s", self.action, item.path, exc)
+
+        self.finished_batch.emit(self.action, ok_count, skipped_count, errors)
+
+
 class MainWindow(QMainWindow):
     """Primary desktop window coordinating library views, backups, catalog, and preview."""
 
@@ -105,6 +147,7 @@ class MainWindow(QMainWindow):
         self._all_fonts: list[FontItem] = []
         self._filtered_fonts: list[FontItem] = []
         self._cards: list[FontCardWidget] = []
+        self._checked_paths: set[Path] = set()
         self._active_category = "all"
         self._visible_limit = self.PAGE_SIZE
         self._selected_path: Path | None = None
@@ -114,6 +157,7 @@ class MainWindow(QMainWindow):
         self._active_workers: set[QThread] = set()
         self._scan_worker: ScanWorker | None = None
         self._backup_worker: BackupWorker | None = None
+        self._batch_worker: BatchLibraryWorker | None = None
 
         self._search_timer = QTimer(self)
         self._search_timer.setSingleShot(True)
@@ -264,6 +308,44 @@ class MainWindow(QMainWindow):
         top_bar.addWidget(self.count_lbl)
         lib_layout.addLayout(top_bar)
 
+        # Bulk selection & actions bar
+        batch_bar = QFrame()
+        batch_bar.setObjectName("BatchBar")
+        batch_layout = QHBoxLayout(batch_bar)
+        batch_layout.setContentsMargins(10, 8, 10, 8)
+        batch_layout.setSpacing(8)
+
+        select_vis_btn = QPushButton("Seleccionar visibles")
+        select_vis_btn.clicked.connect(self.select_visible)
+        batch_layout.addWidget(select_vis_btn)
+
+        clear_sel_btn = QPushButton("Limpiar")
+        clear_sel_btn.clicked.connect(self.clear_selection)
+        batch_layout.addWidget(clear_sel_btn)
+
+        self.selection_lbl = QLabel("0 seleccionadas")
+        self.selection_lbl.setObjectName("CountLabel")
+        batch_layout.addWidget(self.selection_lbl)
+        batch_layout.addStretch(1)
+
+        self.batch_install_btn = QPushButton("Instalar seleccionadas")
+        self.batch_install_btn.setObjectName("PrimaryBtn")
+        self.batch_install_btn.setEnabled(False)
+        self.batch_install_btn.clicked.connect(self._install_selected)
+        batch_layout.addWidget(self.batch_install_btn)
+
+        self.batch_backup_btn = QPushButton("Salvar seleccionadas (.zip)")
+        self.batch_backup_btn.setEnabled(False)
+        self.batch_backup_btn.clicked.connect(self._backup_selected)
+        batch_layout.addWidget(self.batch_backup_btn)
+
+        self.batch_delete_btn = QPushButton("Eliminar seleccionadas")
+        self.batch_delete_btn.setObjectName("DangerBtn")
+        self.batch_delete_btn.setEnabled(False)
+        self.batch_delete_btn.clicked.connect(self._delete_selected)
+        batch_layout.addWidget(self.batch_delete_btn)
+        lib_layout.addWidget(batch_bar)
+
         self.cards_scroll = QScrollArea()
         self.cards_scroll.setWidgetResizable(True)
         self.cards_container = QWidget()
@@ -409,8 +491,14 @@ class MainWindow(QMainWindow):
 
         thumb_text = self._live_preview_text if self._sync_thumbnails else THUMBNAIL_DEFAULT
         for font_item in subset:
-            card = FontCardWidget(font_item, self.font_cache, preview_text=thumb_text)
+            card = FontCardWidget(
+                font_item,
+                self.font_cache,
+                preview_text=thumb_text,
+                is_checked=font_item.path in self._checked_paths,
+            )
             card.set_selected(self._selected_path == font_item.path)
+            card.checked_changed.connect(self._on_card_checked)
             card.selected.connect(self._select_font)
             card.backup_requested.connect(self._backup_single_font)
             card.install_requested.connect(self._install_single_font)
@@ -418,6 +506,7 @@ class MainWindow(QMainWindow):
             self._cards.append(card)
 
         self.cards_layout.addStretch(1)
+        self._update_batch_bar()
 
     def _select_font(self, item: FontItem) -> None:
         self._selected_path = item.path
@@ -591,6 +680,139 @@ class MainWindow(QMainWindow):
         save_settings(self.paths, self.settings)
         mode_txt = "claro" if self.settings.theme == "light" else "oscuro"
         self.statusBar().showMessage(f"Tema cambiado a modo {mode_txt}.")
+
+    def _on_card_checked(self, item: FontItem, checked: bool) -> None:
+        if checked:
+            self._checked_paths.add(item.path)
+        else:
+            self._checked_paths.discard(item.path)
+        self._update_batch_bar()
+
+    def select_visible(self) -> None:
+        """Mark all currently visible library cards."""
+        for card in self._cards:
+            self._checked_paths.add(card.item.path)
+            card.set_checked(True)
+        self._update_batch_bar()
+
+    def clear_selection(self) -> None:
+        """Clear all checked library selections."""
+        self._checked_paths.clear()
+        for card in self._cards:
+            card.set_checked(False)
+        self._update_batch_bar()
+
+    def _selected_library_items(self) -> list[FontItem]:
+        return [item for item in self._all_fonts if item.path in self._checked_paths]
+
+    def _update_batch_bar(self) -> None:
+        valid_paths = {item.path for item in self._all_fonts}
+        if self._all_fonts:
+            self._checked_paths.intersection_update(valid_paths)
+        count = len(self._checked_paths)
+        self.selection_lbl.setText(f"{count} seleccionada{'s' if count != 1 else ''}")
+        has_sel = count > 0
+        self.batch_install_btn.setEnabled(has_sel)
+        self.batch_backup_btn.setEnabled(has_sel)
+        self.batch_delete_btn.setEnabled(has_sel)
+
+    def _install_selected(self) -> None:
+        items = self._selected_library_items()
+        if not items:
+            return
+        if self._batch_worker and self._batch_worker.isRunning():
+            QMessageBox.information(self, "Operación en curso", "Espera a que termine la operación actual.")
+            return
+        self._run_batch_library("install", items)
+
+    def _backup_selected(self) -> None:
+        items = self._selected_library_items()
+        if not items:
+            return
+        stamp = datetime.now().strftime("%Y%m%d-%H%M")
+        default_path = self.paths.backups_dir / f"FontVault-Seleccion-{stamp}.zip"
+        dest_str, _ = QFileDialog.getSaveFileName(
+            self,
+            "Salvar tipografías seleccionadas",
+            str(default_path),
+            "Archivo ZIP (*.zip)",
+        )
+        if not dest_str:
+            return
+        self._run_backup(items, Path(dest_str), as_zip=True)
+
+    def _delete_selected(self) -> None:
+        items = self._selected_library_items()
+        if not items:
+            return
+        if self._batch_worker and self._batch_worker.isRunning():
+            QMessageBox.information(self, "Operación en curso", "Espera a que termine la operación actual.")
+            return
+
+        deletable = [
+            f for f in items if f.source in (FontSource.CUSTOM, FontSource.INSTALLED_USER)
+        ]
+        protected = len(items) - len(deletable)
+        if not deletable:
+            QMessageBox.information(
+                self,
+                "Fuentes protegidas",
+                "Las fuentes del sistema (C:\\Windows\\Fonts) y de aplicaciones están protegidas y no se eliminan.",
+            )
+            return
+
+        prompt = (
+            f"Se eliminarán o desinstalarán {len(deletable)} fuente(s) "
+            f"(Personalizadas y de Usuario)."
+        )
+        if protected:
+            prompt += f"\nSe omitirán {protected} fuente(s) protegidas de Sistema o Aplicación."
+        prompt += "\n\n¿Deseas continuar?"
+
+        reply = QMessageBox.question(
+            self,
+            "Confirmar eliminación",
+            prompt,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Release Qt font handles before unlinking files on Windows.
+        for item in deletable:
+            self.font_cache.release_font(item.path)
+
+        self._run_batch_library("delete", items)
+
+    def _run_batch_library(self, action: str, items: list[FontItem]) -> None:
+        self.batch_install_btn.setEnabled(False)
+        self.batch_backup_btn.setEnabled(False)
+        self.batch_delete_btn.setEnabled(False)
+        worker = BatchLibraryWorker(action, items)
+        self._batch_worker = worker
+        self._register_worker(worker)
+        worker.progress_msg.connect(self.statusBar().showMessage)
+        worker.finished_batch.connect(self._on_batch_library_done)
+        worker.start()
+
+    def _on_batch_library_done(
+        self,
+        action: str,
+        ok_count: int,
+        skipped_count: int,
+        errors: list[str],
+    ) -> None:
+        verb = "instaladas" if action == "install" else "eliminadas/desinstaladas"
+        msg = f"Operación en lote completada: {ok_count} {verb}."
+        if skipped_count:
+            msg += f" Omitidas: {skipped_count}."
+        if errors:
+            msg += f"\n\nErrores ({len(errors)}): " + "; ".join(errors[:3])
+        self.statusBar().showMessage(msg.splitlines()[0])
+        QMessageBox.information(self, "Operación completada", msg)
+        self.clear_selection()
+        self.start_scan()
 
     def _on_catalog_downloaded(self, _files: list[Path], _installed: bool) -> None:
         self.start_scan()

@@ -10,7 +10,7 @@ import winreg
 from pathlib import Path
 
 from fontvault.core.metadata import SUPPORTED_FONT_EXTENSIONS, parse_font_file
-from fontvault.models import FontSource
+from fontvault.models import FontItem, FontSource
 
 
 logger = logging.getLogger(__name__)
@@ -121,7 +121,7 @@ def uninstall_font_user(font_path: Path) -> bool:
     """Uninstall a per-user Windows font from HKCU and user Fonts directory."""
     user_dir = get_user_fonts_dir().resolve()
     resolved = font_path.resolve()
-    if resolved.parent != user_dir:
+    if user_dir not in resolved.parents:
         raise PermissionError(
             "Por seguridad, solo se permite desinstalar fuentes del usuario actual."
         )
@@ -159,4 +159,24 @@ def uninstall_font_user(font_path: Path) -> bool:
             removed = False
 
     _broadcast_font_change()
+    logger.info("Fuente desinstalada (usuario): %s (eliminada=%s)", resolved, removed)
     return removed
+
+
+def delete_font_item(item: FontItem) -> tuple[bool, str]:
+    """Safely delete a custom font or uninstall a per-user Windows font.
+
+    System and bundled application fonts are protected and never deleted.
+    """
+    if item.source == FontSource.CUSTOM:
+        if item.path.is_file():
+            item.path.unlink()
+            logger.info("Fuente personalizada eliminada: %s", item.path)
+            return True, "Eliminada de personalizadas"
+        return False, "Archivo no encontrado"
+
+    if item.source == FontSource.INSTALLED_USER:
+        uninstall_font_user(item.path)
+        return True, "Desinstalada de Windows (usuario)"
+
+    return False, "Protegida: las fuentes del sistema y de aplicaciones no se eliminan"
