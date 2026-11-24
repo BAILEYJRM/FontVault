@@ -100,7 +100,7 @@ class FontCardWidget(QFrame):
         header.setSpacing(6)
 
         title_lbl = QLabel(f"{item.family}  ·  {item.subfamily}")
-        title_lbl.setStyleSheet("font-weight: 600; font-size: 13px; color: #F8FAFC; background: transparent;")
+        title_lbl.setObjectName("CardTitle")
         title_lbl.setWordWrap(False)
         header.addWidget(title_lbl, 1)
 
@@ -120,12 +120,10 @@ class FontCardWidget(QFrame):
 
         # Typographic Thumbnail Specimen
         self.specimen_lbl = QLabel(preview_text or THUMBNAIL_DEFAULT)
+        self.specimen_lbl.setObjectName("CardSpecimen")
         self.specimen_lbl.setWordWrap(False)
         self.specimen_lbl.setMinimumHeight(46)
         self.specimen_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-        self.specimen_lbl.setStyleSheet(
-            "background-color: #0F172A; border-radius: 6px; padding: 6px 10px; color: #F1F5F9;"
-        )
         self.specimen_lbl.setFont(self.font_cache.qfont_for_item(item, 19))
         layout.addWidget(self.specimen_lbl)
 
@@ -134,7 +132,7 @@ class FontCardWidget(QFrame):
         footer.setSpacing(6)
 
         meta_lbl = QLabel(f"{format_bytes(item.file_size)}  ·  {item.path.name}")
-        meta_lbl.setStyleSheet("color: #94A3B8; font-size: 11px; background: transparent;")
+        meta_lbl.setObjectName("MutedText")
         footer.addWidget(meta_lbl, 1)
 
         preview_btn = QPushButton("Vista previa")
@@ -191,12 +189,12 @@ class LivePreviewPanel(QFrame):
         root.addWidget(hdr)
 
         self.title_lbl = QLabel("Selecciona una tipografía")
-        self.title_lbl.setStyleSheet("font-size: 18px; font-weight: 700; color: #F8FAFC;")
+        self.title_lbl.setObjectName("PanelTitle")
         self.title_lbl.setWordWrap(True)
         root.addWidget(self.title_lbl)
 
         self.meta_lbl = QLabel("Haz clic en cualquier tarjeta para probarla en vivo.")
-        self.meta_lbl.setStyleSheet("color: #94A3B8; font-size: 12px;")
+        self.meta_lbl.setObjectName("MutedText")
         self.meta_lbl.setWordWrap(True)
         root.addWidget(self.meta_lbl)
 
@@ -225,7 +223,7 @@ class LivePreviewPanel(QFrame):
         # Size slider + sync checkbox
         size_row = QHBoxLayout()
         self.size_lbl = QLabel("Tamaño: 28 pt")
-        self.size_lbl.setStyleSheet("color: #CBD5E1; font-weight: 600;")
+        self.size_lbl.setObjectName("SizeLabel")
         size_row.addWidget(self.size_lbl)
 
         self.size_slider = QSlider(Qt.Orientation.Horizontal)
@@ -249,13 +247,13 @@ class LivePreviewPanel(QFrame):
         self._specimen_layout.setSpacing(12)
 
         self.main_specimen = QLabel(DEFAULT_PREVIEW_TEXT)
+        self.main_specimen.setObjectName("MainSpecimen")
         self.main_specimen.setWordWrap(True)
-        self.main_specimen.setStyleSheet("color: #F8FAFC; background: transparent;")
         self._specimen_layout.addWidget(self.main_specimen)
 
         sep = QFrame()
+        sep.setObjectName("DividerLine")
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color: #1E293B;")
         self._specimen_layout.addWidget(sep)
 
         waterfall_hdr = QLabel("ESCALA DE TAMAÑOS (WATERFALL)")
@@ -265,12 +263,12 @@ class LivePreviewPanel(QFrame):
         self._waterfall_rows: list[tuple[int, QLabel]] = []
         for pt in (14, 20, 28, 40):
             pt_lbl = QLabel(f"{pt} pt")
-            pt_lbl.setStyleSheet("color: #64748B; font-size: 10px; background: transparent;")
+            pt_lbl.setObjectName("WaterfallPt")
             self._specimen_layout.addWidget(pt_lbl)
 
             sample_lbl = QLabel(DEFAULT_PREVIEW_TEXT)
+            sample_lbl.setObjectName("WaterfallSample")
             sample_lbl.setWordWrap(True)
-            sample_lbl.setStyleSheet("color: #E2E8F0; background: transparent;")
             self._specimen_layout.addWidget(sample_lbl)
             self._waterfall_rows.append((pt, sample_lbl))
 

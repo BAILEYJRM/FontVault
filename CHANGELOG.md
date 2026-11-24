@@ -2,6 +2,11 @@
 
 Todos los cambios notables en **FontVault** se documentan en este archivo siguiendo [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Versionado Semántico](https://semver.org/lang/es/).
 
+## [1.2.0] - 2026-11-24
+### Añadido
+- Botón de cambio **Modo oscuro / Modo claro** en la barra lateral (`MainWindow.toggle_theme`) con persistencia automática en `settings.json`.
+- Hoja de estilos `LIGHT_STYLESHEET` y selector `get_stylesheet(theme)` en `src/fontvault/ui/theme.py` unificando todos los componentes mediante `objectName` (tarjetas, muestras tipográficas, catálogo online, panel de vista previa y barras de desplazamiento).
+
 ## [1.1.0] - 2026-11-24
 ### Añadido
 - Vista previa de tipografías descargables antes de instalarlas: botón `Vista previa` y clic directo sobre tarjetas del catálogo online para probarlas en el estudio de escritura en vivo (`LivePreviewPanel`) con escala *waterfall*.

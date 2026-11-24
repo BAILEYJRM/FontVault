@@ -14,7 +14,7 @@ from tkinter import filedialog, messagebox, ttk
 
 
 APP_NAME = "FontVault"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 PUBLISHER = "FontVault Project"
 UNINSTALL_REG_PATH = rf"Software\Microsoft\Windows\CurrentVersion\Uninstall\{APP_NAME}"
 

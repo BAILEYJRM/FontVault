@@ -141,3 +141,35 @@ def test_catalog_tab_renders_online_preview_card(tmp_path: Path, monkeypatch) ->
     app.processEvents()
     from PySide6.QtGui import QFontDatabase
     QFontDatabase.removeAllApplicationFonts()
+
+
+def test_theme_toggle_persists_setting(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+    from fontvault.config import load_settings
+    from fontvault.ui.main_window import MainWindow
+    from fontvault.ui.theme import DARK_STYLESHEET, LIGHT_STYLESHEET, get_stylesheet
+
+    assert get_stylesheet("dark") == DARK_STYLESHEET
+    assert get_stylesheet("light") == LIGHT_STYLESHEET
+
+    app = QApplication.instance() or QApplication([])
+    paths = resolve_paths(portable_override=True, base_dir=tmp_path)
+
+    with patch("fontvault.ui.main_window.MainWindow.start_scan", return_value=None):
+        win = MainWindow(paths)
+        assert win.settings.theme == "dark"
+        assert "claro" in win.theme_btn.text().lower()
+
+        win.toggle_theme()
+        assert win.settings.theme == "light"
+        assert "oscuro" in win.theme_btn.text().lower()
+        assert load_settings(paths).theme == "light"
+
+        win.toggle_theme()
+        assert win.settings.theme == "dark"
+        assert load_settings(paths).theme == "dark"
+
+        win.close()
+        win.deleteLater()
+    app.processEvents()

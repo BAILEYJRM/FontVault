@@ -10,9 +10,9 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from fontvault import __app_name__, __version__
-from fontvault.config import get_resource_path, resolve_paths
+from fontvault.config import get_resource_path, load_settings, resolve_paths
 from fontvault.ui.main_window import MainWindow
-from fontvault.ui.theme import DARK_STYLESHEET
+from fontvault.ui.theme import get_stylesheet
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -39,12 +39,13 @@ def _set_windows_app_id() -> None:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     paths = resolve_paths(portable_override=True if args.portable else None)
+    settings = load_settings(paths)
 
     _set_windows_app_id()
     app = QApplication(sys.argv if argv is None else [sys.argv[0], *argv])
     app.setApplicationName(__app_name__)
     app.setApplicationVersion(__version__)
-    app.setStyleSheet(DARK_STYLESHEET)
+    app.setStyleSheet(get_stylesheet(settings.theme))
 
     icon_path = get_resource_path("assets/icon.ico")
     if icon_path.exists():

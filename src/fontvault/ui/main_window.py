@@ -7,6 +7,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QFileDialog,
     QFrame,
@@ -30,6 +31,7 @@ from fontvault.core.installer_win import install_font_user
 from fontvault.core.scanner import FontScanner
 from fontvault.models import BackupResult, FontItem, FontSource
 from fontvault.ui.catalog_tab import CatalogTab
+from fontvault.ui.theme import get_stylesheet
 from fontvault.ui.widgets import (
     THUMBNAIL_DEFAULT,
     FontCardWidget,
@@ -131,12 +133,18 @@ class MainWindow(QMainWindow):
         sb_layout.setSpacing(6)
 
         brand = QLabel("FontVault")
-        brand.setStyleSheet("font-size: 20px; font-weight: 800; color: #F8FAFC; padding-left: 6px;")
+        brand.setObjectName("BrandTitle")
         sb_layout.addWidget(brand)
 
         sub_brand = QLabel("Portable" if self.paths.is_portable else "Edición Windows")
-        sub_brand.setStyleSheet("font-size: 11px; color: #38BDF8; padding-left: 6px; margin-bottom: 10px;")
+        sub_brand.setObjectName("BrandSub")
         sb_layout.addWidget(sub_brand)
+
+        self.theme_btn = QPushButton(self._theme_button_label())
+        self.theme_btn.setObjectName("ThemeBtn")
+        self.theme_btn.clicked.connect(self.toggle_theme)
+        sb_layout.addWidget(self.theme_btn)
+        sb_layout.addSpacing(8)
 
         bib_hdr = QLabel("BIBLIOTECA")
         bib_hdr.setObjectName("SectionHeader")
@@ -232,7 +240,7 @@ class MainWindow(QMainWindow):
         top_bar.addWidget(self.search_input, 1)
 
         self.count_lbl = QLabel("0 fuentes")
-        self.count_lbl.setStyleSheet("color: #94A3B8; font-weight: 600;")
+        self.count_lbl.setObjectName("CountLabel")
         top_bar.addWidget(self.count_lbl)
         lib_layout.addLayout(top_bar)
 
@@ -527,6 +535,20 @@ class MainWindow(QMainWindow):
             self.settings.app_scan_dirs.append(folder)
             save_settings(self.paths, self.settings)
         self.start_scan()
+
+    def _theme_button_label(self) -> str:
+        return "🌙 Modo oscuro" if self.settings.theme == "light" else "☀ Modo claro"
+
+    def toggle_theme(self) -> None:
+        """Toggle between Dark and Light modes and persist preference."""
+        self.settings.theme = "light" if self.settings.theme != "light" else "dark"
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(get_stylesheet(self.settings.theme))
+        self.theme_btn.setText(self._theme_button_label())
+        save_settings(self.paths, self.settings)
+        mode_txt = "claro" if self.settings.theme == "light" else "oscuro"
+        self.statusBar().showMessage(f"Tema cambiado a modo {mode_txt}.")
 
     def _on_catalog_downloaded(self, _files: list[Path], _installed: bool) -> None:
         self.start_scan()

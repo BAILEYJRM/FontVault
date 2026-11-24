@@ -16,7 +16,8 @@
 - Signing uses `Set-AuthenticodeSignature -HashAlgorithm SHA256` with `$env:CERT_PFX_PATH` if provided, or `Cert:\CurrentUser\My` dev cert (`CN=FontVault Developer Code Signing`).
 
 ## Current Status
-- **Tests**: `.venv\Scripts\pytest.exe -q` -> `11 passed` (`test_metadata_and_scanner.py`, `test_backup_and_portable.py`, `test_catalog_and_installer.py`).
+- **Version & Repo**: `v1.2.0` on `https://github.com/BAILEYJRM/FontVault.git` (`master`).
+- **Tests**: `.venv\Scripts\pytest.exe -q` -> `14 passed` (`test_metadata_and_scanner.py`, `test_backup_and_portable.py`, `test_catalog_and_installer.py`).
 - **Icons**: `assets/icon.png` (9,871 bytes) and `assets/icon.ico` (37,871 bytes, 16–256 px).
 - **Signed Artifacts (Authenticode SHA-256, Thumbprint `BBE4F1186A767D4849187F86340BB3C9E9EE6F46`, dev cert in `Cert:\CurrentUser\My`, public `.certs/FontVault-DevCert.cer`)**:
   - `build/payload/FontVault.exe` (58,840,512 bytes)

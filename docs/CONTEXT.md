@@ -11,11 +11,12 @@ Gestor de tipografías para Windows (`Python 3.13`, `PySide6`, `fonttools`, `Pil
 - `src/fontvault/core/scanner.py` — `FontScanner` (Windows Fonts, Personalizadas, De Aplicación + caché incremental).
 - `src/fontvault/core/backup.py` — `export_fonts()` (ZIP/carpeta + `manifest.json` SHA-256), `import_fonts_to_custom()`.
 - `src/fontvault/core/installer_win.py` — `install_font_user()`, `install_font_system()`, `uninstall_font_user()`, `is_admin()`, `WM_FONTCHANGE`.
-- `src/fontvault/core/catalog.py` — `FreeFontCatalog` (Fontsource API + jsDelivr + URLs/ZIP externas con anti zip-slip).
-- `src/fontvault/ui/theme.py` — Hoja de estilos oscura Windows 11.
+- `src/fontvault/core/catalog.py` — `FreeFontCatalog` (Fontsource API + jsDelivr + vista previa `download_preview_ttf()` + URLs/ZIP anti zip-slip).
+- `src/fontvault/ui/theme.py` — `DARK_STYLESHEET`, `LIGHT_STYLESHEET`, `get_stylesheet()`.
 - `src/fontvault/ui/widgets.py` — `FontLoaderCache` (lazy `QFontDatabase`), `FontCardWidget`, `LivePreviewPanel`.
-- `src/fontvault/ui/catalog_tab.py` — Catálogo online de fuentes gratis + descarga/instalación asíncrona + portales.
-- `src/fontvault/ui/main_window.py` — `MainWindow`, navegación lateral, paginación, barra de búsqueda y backups.
+- `src/fontvault/ui/catalog_tab.py` — Catálogo online con `OnlineFontCardWidget` (miniaturas + vista previa antes de instalar) y descargas asíncronas.
+- `src/fontvault/ui/main_window.py` — `MainWindow`, navegación lateral, selector de tema oscuro/claro, paginación, búsqueda y backups.
+- `CHANGELOG.md` — Registro histórico de versiones SemVer (`Keep a Changelog`).
 - `scripts/generate_assets.py` — Genera `assets/icon.png` y `assets/icon.ico` multi-resolución.
 - `scripts/sign_binaries.ps1` — Firma Authenticode SHA-256 (`.pfx` o certificado dev en `Cert:\CurrentUser\My`).
 - `scripts/build_all.ps1` — Pipeline completo: icono -> EXEs -> firma -> verificaciones.
